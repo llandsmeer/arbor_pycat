@@ -2,7 +2,15 @@
 
 Allows one to define mechanisms in python instead of NMODL or C++
 
-VERY experimental and full of footguns
+VERY experimental and full of footguns. Likely to break with ABI changes
+
+## Installation
+
+```
+pip install git+https://github.com/llandsmeer/arbor_custom_mod.git#egg=arbor_custom_mod
+```
+
+## Example
 
 ```python
 import arbor
