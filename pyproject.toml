@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "arbor_custom_mod"
 version = "0.0.1"
-description="Laser control"
+description="Python-defined arbor catalogue"
 readme = "README.md"
 authors = [
   { name = "Lennart", email = "pypi.lennart@landsmeer.email" }
@@ -20,6 +20,10 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "numpy",
+    "arbor"
 ]
 
 [project.optional-dependencies]

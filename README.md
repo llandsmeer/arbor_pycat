@@ -2,7 +2,9 @@
 
 Allows one to define mechanisms in python instead of NMODL or C++
 
-VERY experimental and full of footguns. Likely to break with ABI changes
+VERY experimental and full of footguns. Likely to break with arbor updates.
+Makes assumptions on the pointer pack that definitely are not true.
+Only one mechanism supported for now (although that should be an easy fix).
 
 ## Installation
 
@@ -14,34 +16,27 @@ pip install git+https://github.com/llandsmeer/arbor_custom_mod.git#egg=arbor_cus
 
 ```python
 import arbor
-import numpy as np
-import arbor_custom_mod._core as acm
+from arbor_custom_mod import IonInfo, CustomMechanism, register
 
-E = acm.add_global("e", "mV", -70)
-X = acm.add_state("x", "mV", -90)
-Y = acm.add_state("Y", "mV", -80)
-B = acm.add_ion("Na")
+class ExampleMech(CustomMechanism):
+    name = 'arbor_custom_mod'
+    state_vars = [('x', 'mV', 1),
+                  ('y', 'mV', 0)]
+    ions = [IonInfo('ca', expected_valence=2, verify_valence=True)]
 
-def init_mechanism(pp):
-    assert np.all(np.diff(pp.node_index) == 1)
-    pp.state(X)[:] = 10
+    def init_mechanism(self, pp):
+        pp.v = 10
 
-def advance_state(pp):
-    pp.state(X)[:] += (pp.state(Y) + pp.glob(E) - pp.state(X))*pp.dt
+    def advance_state(self, pp):
+        pp.x +=  pp.y * pp.dt
+        pp.y += -pp.x * pp.dt
 
-def compute_current(pp):
-    print(pp.node_index)
-    pp.i[:] = pp.v/10
+    def compute_currents(self, pp):
+        pp.i = pp.v + pp.x
 
-def write_ions(pp):
-    idx = pp.ions(0).index
-    erev = pp.ions(0).reversal_potential[idx]
+    def write_ions(self, pp):
+        pp.eka = +80
+        pp.cai = -pp.v
 
-acm.set_init(init_mechanism)
-acm.set_advance_state(advance_state)
-acm.set_compute_currents(compute_current)
-acm.set_write_ions(write_ions)
-
-so_name = acm.get_so_name()
-cat = arbor.load_catalogue(so_name)
+cat = register(ExampleMech)
 ```
