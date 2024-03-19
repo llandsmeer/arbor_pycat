@@ -1,7 +1,6 @@
 import arbor
 import numpy as np
 import arbor_custom_mod._core as acm
-import matplotlib.pyplot as plt
 
 E = acm.add_global("e", "mV", -70)
 X = acm.add_state("x", "mV", -90)
@@ -67,6 +66,7 @@ handle = sim.sample((0, 0), arbor.regular_schedule(0.1))
 sim.run(tfinal=30)
 data, meta = sim.samples(handle)[0]
 v = data[:, 1]
-plt.plot(v)
-plt.show()
 print(v[-1])
+
+def test_sim_result():
+    assert abs(v[-1]) < 1e-10
