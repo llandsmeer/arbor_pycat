@@ -3,7 +3,8 @@
 Allows one to define mechanisms in python instead of NMODL or C++
 
 VERY experimental and full of footguns. Likely to break with arbor updates.
-Makes assumptions on the pointer pack that definitely are not true.
+Makes assumptions on the pointer pack that definitely are not true, and allows
+you to edit currents, voltages and ions states in ways that might break the arbor solver.
 
 Known to work for `arbor==0.9.0`
 
