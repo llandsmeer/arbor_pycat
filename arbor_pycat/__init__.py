@@ -72,6 +72,11 @@ def register(Mech: Type[CustomMechanism]):
         f = property(lambda self, idx=idx: self.pp.state(idx))
         f = f.setter(lambda self, val, idx=idx: setter(self.pp.state(idx), val))
         setattr(SubPointerPack, name, f)
+    for name, unit, defaultval in Mech.parameters:
+        idx = arb_mech.add_parameter(name, unit, defaultval)
+        f = property(lambda self, idx=idx: self.pp.param(idx))
+        f = f.setter(lambda self, val, idx=idx: setter(self.pp.param(idx), val))
+        setattr(SubPointerPack, name, f)
     for ioninfo in Mech.ions:
         idx = arb_mech.add_ion(**ioninfo._asdict())
         setattr(SubPointerPack, f'i{ioninfo.name}', property(lambda self, idx=idx: self.pp.ions(idx).current_density).setter(lambda self, val, idx=idx: setter(self.pp.ions(idx).current_density, val)))
