@@ -1,7 +1,6 @@
 import arbor
 from typing import Tuple, List, Union, Literal, NamedTuple, Type
 import arbor_pycat._core as acm
-# from dataclasses import dataclass
 
 class IonInfo(NamedTuple):
     name : str
@@ -46,6 +45,7 @@ class PointerPack:
 def register(Mech: Type[CustomMechanism]):
     # Mech = dataclass(frozen=True)(Mech)
     mech = Mech()
+    arb_mech = acm.ArbMech();
     def setter(arr, val):
         arr[:] = val
     class SubPointerPack(PointerPack):
@@ -65,15 +65,15 @@ def register(Mech: Type[CustomMechanism]):
         def g(self, g): self.pp.g[:] = g
 
     for name, unit, defaultval in Mech.globals:
-        idx = acm.add_global(name, unit, defaultval)
+        idx = arb_mech.add_global(name, unit, defaultval)
         setattr(SubPointerPack, name, property(lambda self, idx=idx: self.pp.glob(idx)))
     for name, unit, defaultval in Mech.state_vars:
-        idx = acm.add_state(name, unit, defaultval)
+        idx = arb_mech.add_state(name, unit, defaultval)
         f = property(lambda self, idx=idx: self.pp.state(idx))
         f = f.setter(lambda self, val, idx=idx: setter(self.pp.state(idx), val))
         setattr(SubPointerPack, name, f)
     for ioninfo in Mech.ions:
-        idx = acm.add_ion(**ioninfo._asdict())
+        idx = arb_mech.add_ion(**ioninfo._asdict())
         setattr(SubPointerPack, f'i{ioninfo.name}', property(lambda self, idx=idx: self.pp.ions(idx).current_density).setter(lambda self, val, idx=idx: setter(self.pp.ions(idx).current_density, val)))
         setattr(SubPointerPack, f'c{ioninfo.name}', property(lambda self, idx=idx: self.pp.ions(idx).conductivity).setter(lambda self, val, idx=idx: setter(self.pp.ions(idx).conductivity, val)))
         setattr(SubPointerPack, f'e{ioninfo.name}', property(lambda self, idx=idx: self.pp.ions(idx).reversal_potential).setter(lambda self, val, idx=idx: setter(self.pp.ions(idx).reversal_potential, val)))
@@ -83,12 +83,14 @@ def register(Mech: Type[CustomMechanism]):
         setattr(SubPointerPack, f'{ioninfo.name}q', property(lambda self, idx=idx: self.pp.ions(idx).ionic_charge))
         setattr(SubPointerPack, f'index_{ioninfo.name}', property(lambda self, idx=idx: self.pp.ions(idx).index))
     spp = SubPointerPack(None)
-    acm.set_init(lambda pp: mech.init_mechanism(spp._set(pp)))
-    acm.set_advance_state(lambda pp: mech.advance_state(spp._set(pp)))
-    acm.set_compute_currents(lambda pp: mech.compute_currents(spp._set(pp)))
-    acm.set_write_ions(lambda pp: mech.write_ions(spp._set(pp)))
-    acm.set_name(mech.name)
-    #
+    arb_mech.set_init(lambda pp: mech.init_mechanism(spp._set(pp)))
+    arb_mech.set_advance_state(lambda pp: mech.advance_state(spp._set(pp)))
+    arb_mech.set_compute_currents(lambda pp: mech.compute_currents(spp._set(pp)))
+    arb_mech.set_write_ions(lambda pp: mech.write_ions(spp._set(pp)))
+    arb_mech.set_name(mech.name)
+    acm.register(arb_mech)
+
+def build():
     so_name = acm.get_so_name()
     cat = arbor.load_catalogue(so_name)
     return cat

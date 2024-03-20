@@ -40,3 +40,17 @@ class ExampleMech(CustomMechanism):
 
 cat = register(ExampleMech)
 ```
+
+## Debugging segfaults
+
+```
+pip install .
+mkdir build
+cd build
+cmake -DPython_EXECUTABLE:FILEPATH=$(which python3) -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-I ~/.local/lib/python3.10/site-packages/arbor/include" ..
+mv _core.cpython-310-x86_64-linux-gnu.so ~/.local/lib/python3.10/site-packages/arbor_pycat/_core.cpython-310-x86_64-linux-gnu.so
+
+# [ ... ]
+
+gdb --arg python3 api.py
+```

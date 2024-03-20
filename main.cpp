@@ -1,5 +1,6 @@
 #include <limits>
 #include <stdexcept>
+#include <memory>
 
 #include <pybind11/functional.h>
 #include <pybind11/pybind11.h>
@@ -39,31 +40,34 @@ public:
     bool ro = false;
     ArbPPArray(size_t size, T * raw, bool ro=false) : size(size), raw(raw), ro(ro) {}
     py::array_t<T> to_numpy() {
+        if (!raw) throw std::runtime_error("trying to make a nullpointer into a numpy array");
         return py::array_t<T>(size, raw, py::none());
     }
 };
 
+class ArbMech;
+
 class PP {
     arb_mechanism_ppack* pp;
+    std::shared_ptr<ArbMech> mech; // just for index check, could remove for performance
 public:
-    PP(arb_mechanism_ppack* pp) : pp(pp) {}
+    PP(arb_mechanism_ppack* pp, std::shared_ptr<ArbMech> mech) : pp(pp), mech(mech) {}
     ssize_t get_width() { return pp->width; }
     double get_dt() { return pp->dt; }
     py::array_t<arb_index_type> node_index() { return ArbPPArray(get_width(), pp->node_index, true).to_numpy(); }
-    py::array_t<arb_value_type> state(int idx) { return ArbPPArray<arb_value_type>(get_width(), pp->state_vars[idx]).to_numpy(); }
     arb_value_type glob(int idx) { return pp->globals[idx]; }
-    py::array_t<arb_value_type> param(int idx) { return ArbPPArray<arb_value_type>(get_width(), pp->parameters[idx]).to_numpy(); }
     py::array_t<arb_value_type> v(){ return ArbPPArray<arb_value_type>(get_width(), pp->vec_v).to_numpy(); }
     py::array_t<arb_value_type> i(){ return ArbPPArray<arb_value_type>(get_width(), pp->vec_i).to_numpy(); }
     py::array_t<arb_value_type> g(){ return ArbPPArray<arb_value_type>(get_width(), pp->vec_g).to_numpy(); }
     py::array_t<arb_value_type> t_degC(){ return ArbPPArray<arb_value_type>(get_width(), pp->temperature_degC).to_numpy(); }
     py::array_t<arb_value_type> diam_um(){ return ArbPPArray<arb_value_type>(get_width(), pp->diam_um).to_numpy(); }
     py::array_t<arb_value_type> area_um2(){ return ArbPPArray<arb_value_type>(get_width(), pp->area_um2).to_numpy(); }
-    ArbIonState ions(int idx) {return ArbIonState(get_width(), &pp->ion_states[idx]); }
+    py::array_t<arb_value_type> state(size_t idx);
+    py::array_t<arb_value_type> param(size_t idx);
+    ArbIonState ions(size_t idx);
 };
 
-// now its global, but arbor exposes mechanism id!
-class ArborMod {
+class ArbMech {
     std::vector<std::vector<char>> _intern;
     const char * intern(const std::string & s) {
         std::vector<char> copy;
@@ -129,23 +133,45 @@ public:
     }
 };
 
-ArborMod mod;
+py::array_t<arb_value_type> PP::state(size_t idx) {
+    if (!pp->state_vars) throw std::runtime_error("empty state_vars");
+    if (idx >= mech->state_vars.size()) throw std::runtime_error("state out of range");
+    return ArbPPArray<arb_value_type>(get_width(), pp->state_vars[idx]).to_numpy(); }
+py::array_t<arb_value_type> PP::param(size_t idx) {
+    if (!pp->parameters) throw std::runtime_error("empty parameters");
+    if (idx >= mech->parameters.size()) throw std::runtime_error("param out of range");
+    return ArbPPArray<arb_value_type>(get_width(), pp->parameters[idx]).to_numpy(); }
+ArbIonState PP::ions(size_t idx) {
+    if (!pp->ion_states) throw std::runtime_error("empty ion_states");
+    if (idx >= mech->ions.size()) throw std::runtime_error("param out of range");
+    return ArbIonState(get_width(), &pp->ion_states[idx]); }
+
+std::vector<std::shared_ptr<ArbMech>> mechs;
 
 static void init(arb_mechanism_ppack* pp) {
-    mod.init_handler(PP(pp));
+    // i have absolutely NO idea why, but mechanism_id's are assigned
+    // in reverse order??
+    int idx = mechs.size() - pp->mechanism_id - 1;
+    mechs.at(idx)->init_handler(PP(pp, mechs.at(idx)));
 }
 static void advance_state(arb_mechanism_ppack* pp) {
-    mod.advance_state_handler(PP(pp));
+    int idx = mechs.size() - pp->mechanism_id - 1;
+    mechs.at(idx)->advance_state_handler(PP(pp, mechs.at(idx)));
 }
 static void compute_currents(arb_mechanism_ppack* pp) {
-    mod.compute_currents_handler(PP(pp));
+    int idx = mechs.size() - pp->mechanism_id - 1;
+    mechs.at(idx)->compute_currents_handler(PP(pp, mechs.at(idx)));
 }
 static void write_ions(arb_mechanism_ppack* pp) {
-    mod.write_ions_handler(PP(pp));
+    int idx = mechs.size() - pp->mechanism_id - 1;
+    mechs.at(idx)->write_ions_handler(PP(pp, mechs.at(idx)));
 }
 static void apply_events(arb_mechanism_ppack* pp, arb_deliverable_event_stream* stream_ptr) {
+    (void)pp;
+    (void)stream_ptr;
 }
-static void post_event(arb_mechanism_ppack*) {
+static void post_event(arb_mechanism_ppack*pp) {
+    (void)pp;
 }
 
 arb_mechanism_interface * null_interface() { return nullptr; }
@@ -167,35 +193,45 @@ arb_mechanism_interface * make_cpu_iface() {
 
 arb_mechanism_type make_input_type() {
     frozen_check(true);
+    static size_t call_counter = 0;
+    // this is ugly, but we know this function is called in a loop
+    // so in that way we find out which mechanism we are generating for
+    if (call_counter >= mechs.size()) throw std::runtime_error("called > size(mechs) times; arbor internals changed?");
+    auto & mech = mechs.at(call_counter);
+    call_counter += 1;
     arb_mechanism_type result;
     result.abi_version = ARB_MECH_ABI_VERSION;
     result.fingerprint = "<placeholder>";
-    result.name = mod.name.c_str();
-    result.kind = mod.kind;
-    result.is_linear = mod.is_linear;
-    result.has_post_events = mod.has_post_events;
-    result.globals = mod.globals.data();
-    result.n_globals = mod.globals.size();
-    result.ions = mod.ions.data();
-    result.n_ions = mod.ions.size();
-    result.state_vars = mod.state_vars.data();
-    result.n_state_vars = mod.state_vars.size();
-    result.parameters = mod.parameters.data();
-    result.n_parameters = mod.parameters.size();
-    result.random_variables = mod.random_variables.data();
-    result.n_random_variables = mod.random_variables.size();
+    result.name = mech->name.c_str();
+    result.kind = mech->kind;
+    result.is_linear = mech->is_linear;
+    result.has_post_events = mech->has_post_events;
+    result.globals = mech->globals.data();
+    result.n_globals = mech->globals.size();
+    result.ions = mech->ions.data();
+    result.n_ions = mech->ions.size();
+    result.state_vars = mech->state_vars.data();
+    result.n_state_vars = mech->state_vars.size();
+    result.parameters = mech->parameters.data();
+    result.n_parameters = mech->parameters.size();
+    result.random_variables = mech->random_variables.data();
+    result.n_random_variables = mech->random_variables.size();
     return result;
 }
 
 extern "C" [[gnu::visibility("default")]] const void* get_catalogue(int* n) {
     /* arbor entry point */
-    static arb_mechanism mechanism;
-    mechanism.type = make_input_type,
-    mechanism.i_cpu = make_cpu_iface,
-    mechanism.i_gpu = null_interface;
-    *n = 1;
+    static arb_mechanism mechanism_template;
+    static std::vector<arb_mechanism> mechanisms;
+    mechanism_template.type = make_input_type,
+    mechanism_template.i_cpu = make_cpu_iface,
+    mechanism_template.i_gpu = null_interface;
+    for (size_t i = 0; i < mechs.size(); i++) {
+        mechanisms.push_back(mechanism_template);
+    }
+    *n = mechs.size();
     frozen = true;
-    return (void*)&mechanism;
+    return (void*)mechanisms.data();
 }
 
 const char * get_so_name() {
@@ -213,79 +249,88 @@ PYBIND11_MODULE(_core, m) {
         const char * so_name = get_so_name();
         return std::string(so_name);
         });
-    m.def("set_name", [](const std::string & name) {
-        mod.name = name;
-    });
-    m.def("add_global", [](const std::string & name, const std::string & unit, double defaultval) {
-        return mod.add_global(name, unit, defaultval);
-    });
-    m.def("add_state", [](const std::string & name, const std::string & unit, double defaultval) {
-        return mod.add_state(name, unit, defaultval);
-    });
-    m.def("add_parameter", [](const std::string & name, const std::string & unit, double defaultval) {
-        return mod.add_parameter(name, unit, defaultval);
-    });
-    m.def("add_ion",
-            ([](
-            const std::string & name,
-            bool write_int_concentration,
-            bool write_ext_concentration,
-            bool use_diff_concentration,
-            bool write_rev_potential,
-            bool read_rev_potential,
-            bool read_valence,
-            bool verify_valence,
-            int  expected_valence
-                ) {
-        return mod.add_ion(
-            name,
-            write_int_concentration,
-            write_ext_concentration,
-            use_diff_concentration,
-            write_rev_potential,
-            read_rev_potential,
-            read_valence,
-            verify_valence,
-            expected_valence
-        ); }),
-            py::arg("name"),
-            py::arg("write_int_concentration") = true,
-            py::arg("write_ext_concentration") = false,
-            py::arg("use_diff_concentration") = false,
-            py::arg("write_rev_potential") = false,
-            py::arg("read_rev_potential") = true,
-            py::arg("read_valence") = false,
-            py::arg("verify_valence") = false,
-            py::arg("expected_valence") = 1
-            );
 
-    m.def("is_point", []() {
+    m.def("register", [](std::shared_ptr<ArbMech> & mech) {
         frozen_check();
-        mod.kind = arb_mechanism_kind_density;
+        mechs.push_back(mech);
     });
-    m.def("is_point", []() {
-        frozen_check();
-        mod.kind = arb_mechanism_kind_density;
-    });
-    m.def("set_init", [](std::function<void(const PP pp)> init_handler) {
-        mod.init_handler = init_handler;
-    });
-    m.def("set_advance_state", [](std::function<void(const PP pp)> advance_state_handler) {
-        mod.advance_state_handler = advance_state_handler;
-    });
-    m.def("set_compute_currents", [](std::function<void(const PP pp)> compute_currents_handler) {
-        mod.compute_currents_handler = compute_currents_handler;
-    });
-    m.def("set_write_ions", [](std::function<void(const PP pp)> write_ions_handler) {
-        mod.write_ions_handler = write_ions_handler;
-    });
+    py::class_<ArbMech, std::shared_ptr<ArbMech>>(m, "ArbMech")
+        .def(py::init<>())
+        .def("set_name", [](std::shared_ptr<ArbMech> & mech, const std::string & name) {
+            mech->name = name;
+        })
+        .def("add_global", [](std::shared_ptr<ArbMech> & mech, const std::string & name, const std::string & unit, double defaultval) {
+            return mech->add_global(name, unit, defaultval);
+        })
+        .def("add_state", [](std::shared_ptr<ArbMech> & mech, const std::string & name, const std::string & unit, double defaultval) {
+            return mech->add_state(name, unit, defaultval);
+        })
+        .def("add_parameter", [](std::shared_ptr<ArbMech> & mech, const std::string & name, const std::string & unit, double defaultval) {
+            return mech->add_parameter(name, unit, defaultval);
+        })
+        .def("add_ion",
+                ([](
+                std::shared_ptr<ArbMech> & mech, 
+                const std::string & name,
+                bool write_int_concentration,
+                bool write_ext_concentration,
+                bool use_diff_concentration,
+                bool write_rev_potential,
+                bool read_rev_potential,
+                bool read_valence,
+                bool verify_valence,
+                int  expected_valence
+                    ) {
+            return mech->add_ion(
+                name,
+                write_int_concentration,
+                write_ext_concentration,
+                use_diff_concentration,
+                write_rev_potential,
+                read_rev_potential,
+                read_valence,
+                verify_valence,
+                expected_valence
+            ); }),
+                py::arg("name"),
+                py::arg("write_int_concentration") = true,
+                py::arg("write_ext_concentration") = false,
+                py::arg("use_diff_concentration") = false,
+                py::arg("write_rev_potential") = false,
+                py::arg("read_rev_potential") = true,
+                py::arg("read_valence") = false,
+                py::arg("verify_valence") = false,
+                py::arg("expected_valence") = 1
+                )
+        .def("set_kind_point", [](std::shared_ptr<ArbMech> & mech) {
+            frozen_check();
+            mech->kind = arb_mechanism_kind_density;
+        })
+        .def("set_kind_point", [](std::shared_ptr<ArbMech> & mech) {
+            frozen_check();
+            mech->kind = arb_mechanism_kind_density;
+        })
+        .def("set_init", [](std::shared_ptr<ArbMech> & mech, std::function<void(const PP pp)> init_handler) {
+            mech->init_handler = init_handler;
+        })
+        .def("set_advance_state", [](std::shared_ptr<ArbMech> & mech, std::function<void(const PP pp)> advance_state_handler) {
+            mech->advance_state_handler = advance_state_handler;
+        })
+        .def("set_compute_currents", [](std::shared_ptr<ArbMech> & mech, std::function<void(const PP pp)> compute_currents_handler) {
+            mech->compute_currents_handler = compute_currents_handler;
+        })
+        .def("set_write_ions", [](std::shared_ptr<ArbMech> & mech, std::function<void(const PP pp)> write_ions_handler) {
+            mech->write_ions_handler = write_ions_handler;
+        });
     m.add_object("_cleanup", py::capsule([]() {
         /* prevent segfault */
-        mod.init_handler = {};
-        mod.init_handler = {};
-        mod.advance_state_handler = {};
-        mod.compute_currents_handler = {};
-        mod.write_ions_handler = {};
+        for (auto & mech : mechs) {
+            mech->init_handler = {};
+            mech->init_handler = {};
+            mech->advance_state_handler = {};
+            mech->compute_currents_handler = {};
+            mech->write_ions_handler = {};
+        }
     }));
     py::class_<PP>(m, "PP")
         .def_property_readonly("width", &PP::get_width)

@@ -1,13 +1,26 @@
 import arbor
-from arbor_pycat import IonInfo, CustomMechanism, register
+import arbor_pycat
 
-class ExampleMech(CustomMechanism):
+import faulthandler
+faulthandler.enable()
+
+@arbor_pycat.register
+class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
-    state_vars = [('x', 'mV', 1),
-                  ('y', 'mV', 0)]
-    ions = [IonInfo('ca', expected_valence=2, verify_valence=True)]
+    def init_mechanism(self, pp):
+        print(dir(pp))
+    def compute_currents(self, pp):
+        pp.i = pp.v * 1e-2
+
+@arbor_pycat.register
+class ExampleMech(arbor_pycat.CustomMechanism):
+    name = 'example'
+    state_vars = [('x', 'mV', 1.),
+                  ('y', 'mV', 0.)]
+    ions = [arbor_pycat.IonInfo('ca', expected_valence=2, verify_valence=True)]
 
     def init_mechanism(self, pp):
+        print(dir(pp))
         pp.v = 10
 
     def advance_state(self, pp):
@@ -21,23 +34,24 @@ class ExampleMech(CustomMechanism):
         pp.eka = +80
         pp.cai = -pp.v
 
-cat = register(ExampleMech)
+cat = arbor_pycat.build()
 
 # import matplotlib.pyplot as plt
 
 tree = arbor.segment_tree()
 tree.append(arbor.mnpos, arbor.mpoint(-3, 0, 0, 3), arbor.mpoint(3, 0, 0, 3), tag=1)
-tree.append(arbor.mnpos, arbor.mpoint(-3, 0, 0, 3), arbor.mpoint(3, 0, 0, 3), tag=1)
-tree.append(arbor.mnpos, arbor.mpoint(-3, 0, 0, 3), arbor.mpoint(3, 0, 0, 3), tag=1)
+tree.append(arbor.mnpos, arbor.mpoint(-3, 0, 0, 3), arbor.mpoint(3, 0, 0, 3), tag=2)
+tree.append(arbor.mnpos, arbor.mpoint(-3, 0, 0, 3), arbor.mpoint(3, 0, 0, 3), tag=2)
 
 # (2) Define the soma and its midpoint
-labels = arbor.label_dict({"soma": "(tag 1)", "midpoint": "(location 0 0.5)"})
+labels = arbor.label_dict({"soma": "(tag 1)", "dend": "(tag 2)", "midpoint": "(location 0 0.5)"})
 
 # (3) Create cell and set properties
 decor = (
     arbor.decor()
     .set_property(Vm=-40)
-    .paint('"soma"', arbor.density("passive"))
+    .paint('"soma"', arbor.density("example"))
+    .paint('"dend"', arbor.density("passive"))
 )
 
 class single_recipe(arbor.recipe):

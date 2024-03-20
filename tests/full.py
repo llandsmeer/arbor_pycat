@@ -2,10 +2,12 @@ import arbor
 import numpy as np
 import arbor_pycat._core as acm
 
-E = acm.add_global("e", "mV", -70)
-X = acm.add_state("x", "mV", -90)
-Y = acm.add_state("Y", "mV", -80)
-B = acm.add_ion("Na")
+mech = acm.ArbMech()
+acm.register(mech)
+E = mech.add_global("e", "mV", -70)
+X = mech.add_state("x", "mV", -90)
+Y = mech.add_state("Y", "mV", -80)
+B = mech.add_ion("Na")
 
 def init_mechanism(pp):
     assert np.all(np.diff(pp.node_index) == 1)
@@ -22,10 +24,10 @@ def write_ions(pp):
     idx = pp.ions(0).index
     erev = pp.ions(0).reversal_potential[idx]
 
-acm.set_init(init_mechanism)
-acm.set_advance_state(advance_state)
-acm.set_compute_currents(compute_current)
-acm.set_write_ions(write_ions)
+mech.set_init(init_mechanism)
+mech.set_advance_state(advance_state)
+mech.set_compute_currents(compute_current)
+mech.set_write_ions(write_ions)
 
 so_name = acm.get_so_name()
 cat = arbor.load_catalogue(so_name)
