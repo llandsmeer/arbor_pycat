@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.3.3", "pybind11", "arbor"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "arbor_custom_mod"
+name = "arbor_pycat"
 version = "0.0.1"
 description="Python-defined arbor catalogue"
 readme = "README.md"

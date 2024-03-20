@@ -1,6 +1,6 @@
 import arbor
 from typing import Tuple, List, Union, Literal, NamedTuple, Type
-import arbor_custom_mod._core as acm
+import arbor_pycat._core as acm
 # from dataclasses import dataclass
 
 class IonInfo(NamedTuple):
@@ -87,6 +87,7 @@ def register(Mech: Type[CustomMechanism]):
     acm.set_advance_state(lambda pp: mech.advance_state(spp._set(pp)))
     acm.set_compute_currents(lambda pp: mech.compute_currents(spp._set(pp)))
     acm.set_write_ions(lambda pp: mech.write_ions(spp._set(pp)))
+    acm.set_name(mech.name)
     #
     so_name = acm.get_so_name()
     cat = arbor.load_catalogue(so_name)

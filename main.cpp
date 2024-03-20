@@ -73,7 +73,7 @@ class ArborMod {
         return _intern.at(_intern.size()-1).data();
     }
 public:
-    std::string name = "arbor_custom_mod";
+    std::string name = "mech";
     arb_mechanism_kind kind = arb_mechanism_kind_density;
     bool is_linear = false;
     bool has_post_events = false;
@@ -213,6 +213,9 @@ PYBIND11_MODULE(_core, m) {
         const char * so_name = get_so_name();
         return std::string(so_name);
         });
+    m.def("set_name", [](const std::string & name) {
+        mod.name = name;
+    });
     m.def("add_global", [](const std::string & name, const std::string & unit, double defaultval) {
         return mod.add_global(name, unit, defaultval);
     });

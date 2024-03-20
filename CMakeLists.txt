@@ -17,12 +17,11 @@ execute_process(
   OUTPUT_VARIABLE arbor_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 python_add_library(_core MODULE
-    bind_main.cpp
-    cat_main.cpp
+    main.cpp
     WITH_SOABI)
 
 include_directories(${arbor_INCLUDE_DIR})
 target_link_libraries(_core PRIVATE pybind11::headers)
 target_compile_definitions(_core PRIVATE VERSION_INFO=${PROJECT_VERSION})
 
-install(TARGETS _core DESTINATION arbor_custom_mod)
+install(TARGETS _core DESTINATION arbor_pycat)

@@ -1,29 +1,35 @@
 import arbor
-from arbor_custom_mod import IonInfo, CustomMechanism, register
+import numpy as np
+import arbor_pycat._core as acm
 
-class ExampleMech(CustomMechanism):
-    name = 'passive'
-    state_vars = [('x', 'mV', 1),
-                  ('y', 'mV', 0)]
-    ions = [IonInfo('ca', expected_valence=2, verify_valence=True)]
+E = acm.add_global("e", "mV", -70)
+X = acm.add_state("x", "mV", -90)
+Y = acm.add_state("Y", "mV", -80)
+B = acm.add_ion("Na")
 
-    def init_mechanism(self, pp):
-        pp.v = 10
+def init_mechanism(pp):
+    assert np.all(np.diff(pp.node_index) == 1)
+    pp.state(X)[:] = 10
 
-    def advance_state(self, pp):
-        pp.x +=  pp.y * pp.dt
-        pp.y += -pp.x * pp.dt
+def advance_state(pp):
+    pp.state(X)[:] += (pp.state(Y) + pp.glob(E) - pp.state(X))*pp.dt
 
-    def compute_currents(self, pp):
-        pp.i = pp.v + pp.x
+def compute_current(pp):
+    print(pp.node_index)
+    pp.i[:] = pp.v/10
 
-    def write_ions(self, pp):
-        pp.eka = +80
-        pp.cai = -pp.v
+def write_ions(pp):
+    idx = pp.ions(0).index
+    erev = pp.ions(0).reversal_potential[idx]
 
-cat = register(ExampleMech)
+acm.set_init(init_mechanism)
+acm.set_advance_state(advance_state)
+acm.set_compute_currents(compute_current)
+acm.set_write_ions(write_ions)
 
-import matplotlib.pyplot as plt
+so_name = acm.get_so_name()
+cat = arbor.load_catalogue(so_name)
+mech = cat['mech']
 
 tree = arbor.segment_tree()
 tree.append(arbor.mnpos, arbor.mpoint(-3, 0, 0, 3), arbor.mpoint(3, 0, 0, 3), tag=1)
@@ -37,7 +43,8 @@ labels = arbor.label_dict({"soma": "(tag 1)", "midpoint": "(location 0 0.5)"})
 decor = (
     arbor.decor()
     .set_property(Vm=-40)
-    .paint('"soma"', arbor.density("arbor_custom_mod"))
+    .paint('"soma"', arbor.density("mech"))
+    .set_ion("Na", int_con=54.4, ext_con=2.5, rev_pot=-77)
 )
 
 class single_recipe(arbor.recipe):
@@ -51,26 +58,14 @@ class single_recipe(arbor.recipe):
     def num_cells(self): return 1
     def cell_kind(self, _): return arbor.cell_kind.cable
     def cell_description(self, gid): return arbor.cable_cell(tree, decor, labels)
-    def probes(self, _): return [
-            arbor.cable_probe_membrane_voltage('(root)'),
-            arbor.cable_probe_ion_int_concentration('(root)', 'ca')
-            ]
+    def probes(self, _): return [arbor.cable_probe_membrane_voltage('(root)')]
     def global_properties(self, kind): return self.the_props
 recipe = single_recipe()
 sim = arbor.simulation(recipe)
 handle = sim.sample((0, 0), arbor.regular_schedule(0.1))
-ca_handle = sim.sample((0, 1), arbor.regular_schedule(0.1))
 sim.run(tfinal=30)
-cai = sim.samples(ca_handle)[0][0][:,1]
-print(cai)
 data, meta = sim.samples(handle)[0]
 v = data[:, 1]
 print(v[-1])
-plt.plot(v)
-plt.plot(cai)
-plt.show()
 
-
-def test_sim_result():
-    assert abs(v[-1]) < 2
-    assert abs(cai[-1]) < 2
+assert abs(v[-1]) < 1e-10

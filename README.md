@@ -9,17 +9,17 @@ Only one mechanism supported for now (although that should be an easy fix).
 ## Installation
 
 ```
-pip install git+https://github.com/llandsmeer/arbor_custom_mod.git#egg=arbor_custom_mod
+pip install git+https://github.com/llandsmeer/arbor_pycat.git#egg=arbor_pycat
 ```
 
 ## Example
 
 ```python
 import arbor
-from arbor_custom_mod import IonInfo, CustomMechanism, register
+from arbor_pycat import IonInfo, CustomMechanism, register
 
 class ExampleMech(CustomMechanism):
-    name = 'arbor_custom_mod'
+    name = 'example_mech'
     state_vars = [('x', 'mV', 1),
                   ('y', 'mV', 0)]
     ions = [IonInfo('ca', expected_valence=2, verify_valence=True)]
