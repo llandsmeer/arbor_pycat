@@ -5,6 +5,8 @@ Allows one to define mechanisms in python instead of NMODL or C++
 VERY experimental and full of footguns. Likely to break with arbor updates.
 Makes assumptions on the pointer pack that definitely are not true.
 
+Known to work for `arbor==0.9.0`
+
 ## Installation
 
 ```
