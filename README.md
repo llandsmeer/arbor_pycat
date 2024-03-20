@@ -4,7 +4,6 @@ Allows one to define mechanisms in python instead of NMODL or C++
 
 VERY experimental and full of footguns. Likely to break with arbor updates.
 Makes assumptions on the pointer pack that definitely are not true.
-Only one mechanism supported for now (although that should be an easy fix).
 
 ## Installation
 
@@ -16,15 +15,25 @@ pip install git+https://github.com/llandsmeer/arbor_pycat.git#egg=arbor_pycat
 
 ```python
 import arbor
-from arbor_pycat import IonInfo, CustomMechanism, register
+import arbor_pycat
 
-class ExampleMech(CustomMechanism):
-    name = 'example_mech'
-    state_vars = [('x', 'mV', 1),
-                  ('y', 'mV', 0)]
-    ions = [IonInfo('ca', expected_valence=2, verify_valence=True)]
+@arbor_pycat.register
+class Passive(arbor_pycat.CustomMechanism):
+    name = 'passive'
+    def init_mechanism(self, pp):
+        print(dir(pp))
+    def compute_currents(self, pp):
+        pp.i = pp.v * 1e-2
+
+@arbor_pycat.register
+class ExampleMech(arbor_pycat.CustomMechanism):
+    name = 'example'
+    state_vars = [('x', 'mV', 1.),
+                  ('y', 'mV', 0.)]
+    ions = [arbor_pycat.IonInfo('ca', expected_valence=2, verify_valence=True)]
 
     def init_mechanism(self, pp):
+        print(dir(pp))
         pp.v = 10
 
     def advance_state(self, pp):
@@ -38,7 +47,7 @@ class ExampleMech(CustomMechanism):
         pp.eka = +80
         pp.cai = -pp.v
 
-cat = register(ExampleMech)
+cat = arbor_pycat.build()
 ```
 
 ## Debugging segfaults

@@ -1,9 +1,6 @@
 import arbor
 import arbor_pycat
 
-import faulthandler
-faulthandler.enable()
-
 @arbor_pycat.register
 class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
