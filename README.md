@@ -1,5 +1,7 @@
 # (Experimental) custom mechanisms in python for Arbor
 
+![CI](https://github.com/llandsmeer/arbor_pycat/actions/workflows/python-package.yml/badge.svg)
+
 Allows one to define mechanisms in python instead of NMODL or C++
 
 VERY experimental and full of footguns. Likely to break with arbor updates.
@@ -17,6 +19,10 @@ For a 1024 CV cell and JAX.jit compilation, this is reduced to ~1.7 times slower
 ```
 pip install git+https://github.com/llandsmeer/arbor_pycat.git#egg=arbor_pycat
 ```
+
+## Known bugs
+
+The default accessors (`Xi`, `Xo`, `iX` etc) for ions ignore the index attribute
 
 ## Example
 

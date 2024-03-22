@@ -10,4 +10,7 @@ def test_api():
 def test_full():
     subprocess.check_call([sys.executable, os.path.join(d, 'full.py')])
 
+def test_multi():
+    subprocess.check_call([sys.executable, os.path.join(d, 'multi.py')])
+
 
