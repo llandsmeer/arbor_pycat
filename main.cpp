@@ -64,6 +64,7 @@ public:
     py::array_t<arb_value_type> area_um2(){ return ArbPPArray<arb_value_type>(get_width(), pp->area_um2).to_numpy(); }
     py::array_t<arb_value_type> state(size_t idx);
     py::array_t<arb_value_type> param(size_t idx);
+    py::array_t<arb_value_type> random(size_t idx);
     ArbIonState ions(size_t idx);
 };
 
@@ -92,21 +93,28 @@ public:
     std::function<void(const PP pp)> write_ions_handler;
     int add_global(const std::string & name, const std::string & unit = "", double default_value=0.) {
         frozen_check();
-        arb_field_info afi = { intern(name), intern(unit), default_value, std::numeric_limits<double>::min(), std::numeric_limits<double>::max()};
+        arb_field_info afi = { intern(name), intern(unit), default_value, -std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
         globals.push_back(afi);
         return globals.size() - 1;
     }
     int add_state(const std::string & name, const std::string & unit = "", double default_value=0.) {
         frozen_check();
-        arb_field_info afi = { intern(name), intern(unit), default_value, std::numeric_limits<double>::min(), std::numeric_limits<double>::max()};
+        arb_field_info afi = { intern(name), intern(unit), default_value, -std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
         state_vars.push_back(afi);
         return state_vars.size() - 1;
     }
     int add_parameter(const std::string & name, const std::string & unit = "", double default_value=0.) {
         frozen_check();
-        arb_field_info afi = { intern(name), intern(unit), default_value, std::numeric_limits<double>::min(), std::numeric_limits<double>::max()};
+        arb_field_info afi = { intern(name), intern(unit), default_value, -std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
         parameters.push_back(afi);
         return parameters.size() - 1;
+    }
+    int add_random(const std::string & name, ssize_t index) {
+        frozen_check();
+        // i have no idea what index does
+        arb_random_variable_info arvi = { intern(name), (arb_size_type)index };
+        random_variables.push_back(arvi);
+        return random_variables.size() - 1;
     }
     int add_ion(const std::string & name,
         bool write_int_concentration,
@@ -141,6 +149,11 @@ py::array_t<arb_value_type> PP::param(size_t idx) {
     if (!pp->parameters) throw std::runtime_error("empty parameters");
     if (idx >= mech->parameters.size()) throw std::runtime_error("param out of range");
     return ArbPPArray<arb_value_type>(get_width(), pp->parameters[idx]).to_numpy(); }
+py::array_t<arb_value_type> PP::random(size_t idx) {
+    if (!pp->random_numbers) throw std::runtime_error("empty random");
+    if (idx >= mech->random_variables.size()) throw std::runtime_error("param out of range");
+    // ugly: we discard the const
+    return ArbPPArray<arb_value_type>(get_width(), (arb_value_type*)pp->random_numbers[idx], true).to_numpy(); }
 ArbIonState PP::ions(size_t idx) {
     if (!pp->ion_states) throw std::runtime_error("empty ion_states");
     if (idx >= mech->ions.size()) throw std::runtime_error("param out of range");
@@ -268,6 +281,9 @@ PYBIND11_MODULE(_core, m) {
         .def("add_parameter", [](std::shared_ptr<ArbMech> & mech, const std::string & name, const std::string & unit, double defaultval) {
             return mech->add_parameter(name, unit, defaultval);
         })
+        .def("add_random", [](std::shared_ptr<ArbMech> & mech, const std::string & name, size_t index) {
+            return mech->add_random(name, index);
+        })
         .def("add_ion",
                 ([](
                 std::shared_ptr<ArbMech> & mech, 
@@ -339,6 +355,7 @@ PYBIND11_MODULE(_core, m) {
         .def("state", &PP::state)
         .def("glob", &PP::glob)
         .def("param", &PP::param)
+        .def("random", &PP::random)
         .def_property_readonly("v", &PP::v)
         .def_property_readonly("i", &PP::i)
         .def_property_readonly("g", &PP::g)

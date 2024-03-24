@@ -18,6 +18,7 @@ class CustomMechanism:
     globals: Union[List[Tuple[str, str, float]], Tuple[()]] = ()
     state_vars: Union[List[Tuple[str, str, float]], Tuple[()]] = ()
     parameters: Union[List[Tuple[str, str, float]], Tuple[()]] = ()
+    random: Union[List[Tuple[str, int]], Tuple[()]] = ()
     ions: Union[List[IonInfo], Tuple[()]] = ()
     kind: Literal['density', 'point'] = 'density'
 
@@ -76,6 +77,11 @@ def register(Mech: Type[CustomMechanism]):
         idx = arb_mech.add_parameter(name, unit, defaultval)
         f = property(lambda self, idx=idx: self.pp.param(idx))
         f = f.setter(lambda self, val, idx=idx: setter(self.pp.param(idx), val))
+        setattr(SubPointerPack, name, f)
+    for name, index in Mech.random:
+        idx = arb_mech.add_random(name, index)
+        assert idx == index # sorry I have no idea what the differences are
+        f = property(lambda self, idx=idx: self.pp.random(idx))
         setattr(SubPointerPack, name, f)
     for ioninfo in Mech.ions:
         idx = arb_mech.add_ion(**ioninfo._asdict())

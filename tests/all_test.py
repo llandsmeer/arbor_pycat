@@ -4,6 +4,11 @@ import subprocess
 
 d = os.path.dirname(__file__)
 
+# we can only register -> build once per process so need to spawn multiple python processes
+
+def test_rand():
+    subprocess.check_call([sys.executable, os.path.join(d, 'rand.py')])
+
 def test_api():
     subprocess.check_call([sys.executable, os.path.join(d, 'api.py')])
 
