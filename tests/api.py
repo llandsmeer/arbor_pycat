@@ -5,9 +5,9 @@ import arbor_pycat
 class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
     def init_mechanism(self, pp):
-        print(dir(pp))
+        print('passive', pp.node_index)
     def compute_currents(self, pp):
-        pp.i = pp.v * 1e-2
+        pp.i[pp.node_index] = pp.v[pp.node_index] * 1e-2
 
 @arbor_pycat.register
 class ExampleMech(arbor_pycat.CustomMechanism):
@@ -17,19 +17,22 @@ class ExampleMech(arbor_pycat.CustomMechanism):
     ions = [arbor_pycat.IonInfo('ca', expected_valence=2, verify_valence=True)]
 
     def init_mechanism(self, pp):
-        print(dir(pp))
-        pp.v = 10
+        print('example', pp.node_index)
+        pp.v[pp.node_index] = 10
 
     def advance_state(self, pp):
-        pp.x +=  pp.y * pp.dt
-        pp.y += -pp.x * pp.dt
+        dx =  pp.y * pp.dt
+        dy = -pp.x * pp.dt
+        pp.x += dx
+        pp.y += dy
+        print(pp.x)
 
     def compute_currents(self, pp):
-        pp.i = pp.v + pp.x
+        pp.i[pp.node_index] = (pp.v[pp.node_index] + pp.x) * 1e-1
 
     def write_ions(self, pp):
-        pp.eka = +80
-        pp.cai = -pp.v
+        pp.eca[pp.index_ca] = +80
+        pp.cai[pp.index_ca] = -pp.v[pp.node_index]
 
 cat = arbor_pycat.build()
 
@@ -46,7 +49,7 @@ labels = arbor.label_dict({"soma": "(tag 1)", "dend": "(tag 2)", "midpoint": "(l
 # (3) Create cell and set properties
 decor = (
     arbor.decor()
-    .set_property(Vm=-40)
+    .set_property(Vm=-40, rL=1e5)
     .paint('"soma"', arbor.density("example"))
     .paint('"dend"', arbor.density("passive"))
 )
@@ -76,6 +79,9 @@ cai = sim.samples(ca_handle)[0][0][:,1]
 print(cai)
 data, meta = sim.samples(handle)[0]
 v = data[:, 1]
+#import matplotlib.pyplot as plt
+#plt.plot(v)
+#plt.show()
 print(v[-1])
 # plt.plot(v)
 # plt.plot(cai)

@@ -27,9 +27,18 @@ void frozen_check(bool check = false) {
 
 class ArbIonState {
 public:
-    ssize_t size;
+    ssize_t size_of_index_array;
     arb_ion_state * raw;
-    ArbIonState(ssize_t size, arb_ion_state * raw) : size(size), raw(raw) {}
+    int size_of_data_arrays;
+    ArbIonState(ssize_t size, arb_ion_state * raw) : size_of_index_array(size), raw(raw) {
+        int maxidx = 0;
+        for (ssize_t i = 0; i < size; i++) {
+            if (raw->index[i] > maxidx) {
+                maxidx = raw->index[i];
+            }
+        }
+        size_of_data_arrays = maxidx + 1;
+    }
 };
 
 template<typename T>
@@ -50,18 +59,29 @@ class ArbMech;
 class PP {
     arb_mechanism_ppack* pp;
     std::shared_ptr<ArbMech> mech; // just for index check, could remove for performance
+    int max_node_index = 0; // node_index has get_width size, but max index into v could be higher
 public:
-    PP(arb_mechanism_ppack* pp, std::shared_ptr<ArbMech> mech) : pp(pp), mech(mech) {}
-    ssize_t get_width() { return pp->width; }
-    double get_dt() { return pp->dt; }
+    PP(arb_mechanism_ppack* pp, std::shared_ptr<ArbMech> mech) : pp(pp), mech(mech) {
+        // slow, inefficient etc but still O(n). should precalculate
+        int maxidx = 0;
+        for (size_t i = 0; i < pp->width; i++) {
+            if (pp->node_index[i] > maxidx) {
+                maxidx = pp->node_index[i];
+            }
+        }
+        max_node_index = maxidx;
+    }
+    ssize_t get_width() { return pp->width; } //  _pp_var_width
+    ssize_t get_nwidth() { return max_node_index + 1; }
+    double get_dt() { return pp->dt; } // _pp_var_dt
     py::array_t<arb_index_type> node_index() { return ArbPPArray(get_width(), pp->node_index, true).to_numpy(); }
     arb_value_type glob(int idx) { return pp->globals[idx]; }
-    py::array_t<arb_value_type> v(){ return ArbPPArray<arb_value_type>(get_width(), pp->vec_v).to_numpy(); }
-    py::array_t<arb_value_type> i(){ return ArbPPArray<arb_value_type>(get_width(), pp->vec_i).to_numpy(); }
-    py::array_t<arb_value_type> g(){ return ArbPPArray<arb_value_type>(get_width(), pp->vec_g).to_numpy(); }
-    py::array_t<arb_value_type> t_degC(){ return ArbPPArray<arb_value_type>(get_width(), pp->temperature_degC).to_numpy(); }
-    py::array_t<arb_value_type> diam_um(){ return ArbPPArray<arb_value_type>(get_width(), pp->diam_um).to_numpy(); }
-    py::array_t<arb_value_type> area_um2(){ return ArbPPArray<arb_value_type>(get_width(), pp->area_um2).to_numpy(); }
+    py::array_t<arb_value_type> v(){ return ArbPPArray<arb_value_type>(get_nwidth(), pp->vec_v).to_numpy(); }
+    py::array_t<arb_value_type> i(){ return ArbPPArray<arb_value_type>(get_nwidth(), pp->vec_i).to_numpy(); }
+    py::array_t<arb_value_type> g(){ return ArbPPArray<arb_value_type>(get_nwidth(), pp->vec_g).to_numpy(); }
+    py::array_t<arb_value_type> t_degC(){ return ArbPPArray<arb_value_type>(max_node_index+1, pp->temperature_degC).to_numpy(); }
+    py::array_t<arb_value_type> diam_um(){ return ArbPPArray<arb_value_type>(max_node_index+1, pp->diam_um).to_numpy(); }
+    py::array_t<arb_value_type> area_um2(){ return ArbPPArray<arb_value_type>(max_node_index+1, pp->area_um2).to_numpy(); }
     py::array_t<arb_value_type> state(size_t idx);
     py::array_t<arb_value_type> param(size_t idx);
     py::array_t<arb_value_type> random(size_t idx);
@@ -350,6 +370,7 @@ PYBIND11_MODULE(_core, m) {
     }));
     py::class_<PP>(m, "PP")
         .def_property_readonly("width", &PP::get_width)
+        .def_property_readonly("nwidth", &PP::get_nwidth)
         .def_property_readonly("dt", &PP::get_dt)
         .def_property_readonly("node_index", &PP::node_index)
         .def("state", &PP::state)
@@ -373,14 +394,14 @@ PYBIND11_MODULE(_core, m) {
             return py::buffer_info(p.raw, p.size, p.ro);
         });
     py::class_<ArbIonState>(m, "ArbIonState")
-        .def_property_readonly("current_density", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->current_density).to_numpy(); })
-        .def_property_readonly("conductivity", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->conductivity).to_numpy(); })
-        .def_property_readonly("reversal_potential", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->reversal_potential).to_numpy(); })
-        .def_property_readonly("internal_concentration", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->internal_concentration).to_numpy(); })
-        .def_property_readonly("external_concentration", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->external_concentration).to_numpy(); })
-        .def_property_readonly("diffusive_concentration", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->diffusive_concentration).to_numpy(); })
-        .def_property_readonly("ionic_charge", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size, s.raw->ionic_charge).to_numpy(); })
-        .def_property_readonly("index", [](ArbIonState & s) { return ArbPPArray<arb_index_type>(s.size, s.raw->index).to_numpy(); })
+        .def_property_readonly("current_density", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->current_density).to_numpy(); })
+        .def_property_readonly("conductivity", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->conductivity).to_numpy(); })
+        .def_property_readonly("reversal_potential", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->reversal_potential).to_numpy(); })
+        .def_property_readonly("internal_concentration", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->internal_concentration).to_numpy(); })
+        .def_property_readonly("external_concentration", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->external_concentration).to_numpy(); })
+        .def_property_readonly("diffusive_concentration", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->diffusive_concentration).to_numpy(); })
+        .def_property_readonly("ionic_charge", [](ArbIonState & s) { return ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->ionic_charge).to_numpy(); })
+        .def_property_readonly("index", [](ArbIonState & s) { return ArbPPArray<arb_index_type>(s.size_of_index_array, s.raw->index).to_numpy(); })
         ;
 #ifdef VERSION_INFO
 #define STRINGIFY(x) #x

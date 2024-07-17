@@ -9,7 +9,7 @@ class Passive(arbor_pycat.CustomMechanism):
     def init_mechanism(self, pp):
         print(pp.width, 'Vm', pp.v)
     def compute_currents(self, pp):
-        pp.i = (pp.v - pp.gid) * 1e-2
+        pp.i[pp.node_index] = (pp.v[pp.node_index] - pp.gid) * 1e-2
 
 cat = arbor_pycat.build()
 
