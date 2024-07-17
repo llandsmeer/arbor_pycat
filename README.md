@@ -14,15 +14,19 @@ The overhead for calling back to python is quite large at the moment:
 For a single CV cell, initial tests with the HH model suggests that the call overhead is about 600x over the builtin HH NMODL implementation.
 For a 1024 CV cell and JAX.jit compilation, this is reduced to ~1.7 times slower execution.
 
+Make sure you use the right indexing method! Else you will access memory you should not access...
+
+For example:
+
+ - `pp.v[pp.node_index]`, `pp.i[pp.node_index]` (`v`, `g`, `i` via node index)
+ - `pp.state` (state as is)
+ - `pp.ica[pp.index_ca]`,`pp.ek[pp.index_k]` (ions via ion index)
+
 ## Installation
 
 ```
 pip install git+https://github.com/llandsmeer/arbor_pycat.git#egg=arbor_pycat
 ```
-
-## Known bugs
-
-The default accessors (`Xi`, `Xo`, `iX` etc) for ions ignore the index attribute
 
 ## Example
 
@@ -34,9 +38,9 @@ import arbor_pycat
 class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
     def init_mechanism(self, pp):
-        print(dir(pp))
+        pass
     def compute_currents(self, pp):
-        pp.i = pp.v * 1e-2
+        pp.i[pp.node_index] = pp.v[pp.node_index] * 1e-2
 
 @arbor_pycat.register
 class ExampleMech(arbor_pycat.CustomMechanism):
@@ -46,21 +50,34 @@ class ExampleMech(arbor_pycat.CustomMechanism):
     ions = [arbor_pycat.IonInfo('ca', expected_valence=2, verify_valence=True)]
 
     def init_mechanism(self, pp):
-        print(dir(pp))
-        pp.v = 10
+        pp.v[pp.node_index] = 10
 
     def advance_state(self, pp):
-        pp.x +=  pp.y * pp.dt
-        pp.y += -pp.x * pp.dt
+        dx =  pp.y * pp.dt
+        dy = -pp.x * pp.dt
+        pp.x += dx
+        pp.y += dy
+        print(pp.x)
 
     def compute_currents(self, pp):
-        pp.i = pp.v + pp.x
+        pp.i[pp.node_index] = (pp.v[pp.node_index] + pp.x) * 1e-1
 
     def write_ions(self, pp):
-        pp.eka = +80
-        pp.cai = -pp.v
+        pp.eca[pp.index_ca] = +80
+        pp.cai[pp.index_ca] = -pp.v[pp.node_index]
 
 cat = arbor_pycat.build()
+
+# [...]
+
+decor = (
+    arbor.decor()
+    .paint('"soma"', arbor.density("example"))
+    .paint('"dend"', arbor.density("passive"))
+)
+
+props = arbor.neuron_cable_properties()
+props.catalogue.extend(cat, '')
 ```
 
 ## Hodgkin-Huxley example
@@ -87,9 +104,9 @@ class ExampleMech(arbor_pycat.CustomMechanism):
                   ('el', '',  -65)]
 
     def init_mechanism(self, pp):
-        pp.m = alpha_m(pp.v) / (alpha_m(pp.v) + beta_m(pp.v))
-        pp.h = alpha_h(pp.v) / (alpha_h(pp.v) + beta_h(pp.v))
-        pp.n = alpha_n(pp.v) / (alpha_n(pp.v) + beta_n(pp.v))
+        pp.m = alpha_m(pp.v[pp.node_index]) / (alpha_m(pp.v[pp.node_index]) + beta_m(pp.v[pp.node_index]))
+        pp.h = alpha_h(pp.v[pp.node_index]) / (alpha_h(pp.v[pp.node_index]) + beta_h(pp.v[pp.node_index]))
+        pp.n = alpha_n(pp.v[pp.node_index]) / (alpha_n(pp.v[pp.node_index]) + beta_n(pp.v[pp.node_index]))
 
     def advance_state(self, pp):
         pp.t += pp.dt
@@ -98,11 +115,11 @@ class ExampleMech(arbor_pycat.CustomMechanism):
         pp.n += pp.dt * (alpha_n(pp.v)*(1-pp.n) - beta_n(pp.v)*pp.n)
 
     def compute_currents(self, pp):
-        ina = pp.gna*pp.m**3*pp.h*(pp.v - pp.ena)
-        ik = pp.gk*pp.n**4*(pp.v - pp.ek)
-        il = pp.gl*(pp.v - pp.el)
+        ina = pp.gna*pp.m**3*pp.h*(pp.v[pp.node_index] - pp.ena)
+        ik = pp.gk*pp.n**4*(pp.v[pp.node_index] - pp.ek)
+        il = pp.gl*(pp.v[pp.node_index] - pp.el)
         iapp = 0.05 if pp.t[0] % 100 > 95 else 0
-        pp.i = ina + ik + il - iapp
+        pp.i[pp.node_index] = ina + ik + il - iapp
 ```
 
 ## Debugging segfaults
