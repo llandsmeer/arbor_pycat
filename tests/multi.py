@@ -7,8 +7,9 @@ class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
     parameters = [('gid', '()', -1)]
     def init_mechanism(self, pp):
-        print(pp.width, 'Vm', pp.v)
+        print(pp.width, 'Vm', pp.v[pp.node_index])
     def compute_currents(self, pp):
+        print('#', pp.gid, pp.v[pp.node_index], pp.node_index)
         pp.i[pp.node_index] = (pp.v[pp.node_index] - pp.gid) * 1e-2
 
 cat = arbor_pycat.build()
@@ -44,4 +45,6 @@ sim.run(tfinal=30)
 v = np.array([sim.samples(handle)[0][0][:,1] for handle in handles]).T
 
 
+print(v[-1])
+print(np.round(v[-1], 3))
 assert all(np.round(v[-1], 3) == np.arange(recipe.num_cells()))

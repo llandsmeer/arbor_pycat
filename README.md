@@ -138,7 +138,7 @@ gdb --arg python3 api.py
 
 # Inferior Olive (de Gruijl model) example
 
-```
+```python
 import jax
 import jax.numpy as jnp
 import arbor_pycat._core as acm
