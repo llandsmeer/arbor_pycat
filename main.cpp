@@ -8,7 +8,69 @@
 #include <pybind11/operators.h>
 #include <pybind11/stl.h>
 
+#include <unistd.h>
 #include <dlfcn.h>
+
+#define ERROR(x) do { \
+    char buf[] = "arbor_pycat:" __FILE__ ":" x; \
+    write(STDOUT_FILENO, buf, sizeof(buf)); \
+    throw std::runtime_error(x); \
+} while (0)
+
+/* From arbor documentation:
+ * 
+    typedef struct {
+        // Global data
+        arb_index_type width;                           // Number of CVs of this mechanism, size of arrays
+        arb_index_type n_detectors;                     // Number of spike detectors
+        arb_index_type* vec_ci;                         // [Array] Map CV to cell
+        arb_index_type* vec_di;                         // [Array] Map
+        const arb_value_type* vec_t;                    // [Array] time value
+        arb_value_type* vec_dt;                         // [Array] time step
+        arb_value_type* vec_v;                          // [Array] potential
+        arb_value_type* vec_i;                          // [Array] current
+        arb_value_type* vec_g;                          // [Array] conductance
+        arb_value_type* temperature_degC;               // [Array] Temperature in celsius
+        arb_value_type* diam_um;                        // [Array] CV diameter
+        arb_value_type* time_since_spike;               // Times since last spike; one entry per cell and detector.
+        arb_index_type* node_index;                     // Indices of CVs covered by this mechanism, size is width
+        arb_index_type* multiplicity;                   // [Unused]
+        arb_value_type* weight;                         // [Array] Weight
+        arb_size_type mechanism_id;                     // Unique ID for this mechanism on this cell group
+        arb_deliverable_event_stream events;            // Events during the last period
+        arb_constraint_partition     index_constraints; // Index restrictions, not initialised for all backends.
+        // User data
+        arb_value_type** parameters;                    // [Array] setable parameters
+        arb_value_type** state_vars;                    // [Array] integrable state
+        arb_value_type*  globals;                       // global constant state
+        arb_ion_state*   ion_states;                    // [Array] views into shared state
+    } arb_mechanism_ppack;
+
+Members tagged as ``[Array]`` represent one value per CV. To access the values
+belonging to your mechanism, a level of indirection via ``node_index`` is
+needed.
+
+
+simplified load_catalogue logic
+ARB_ARBOR_API const mechanism_catalogue load_catalogue(const std::filesystem::path& fn) {
+    typedef void* global_catalogue_t(int*);
+    global_catalogue_t* get_catalogue = nullptr;
+    get_catalogue = util::dl_get_symbol<global_catalogue_t*>(fn, "get_catalogue");
+    int count = -1;
+    auto mechs = (arb_mechanism*)get_catalogue(&count);
+    mechanism_catalogue result;
+    for(int ix = 0; ix < count; ++ix) {
+        auto type = mechs[ix].type();
+        auto name = std::string{type.name};
+        auto icpu = mechs[ix].i_cpu();
+        auto igpu = mechs[ix].i_gpu();
+        result.add(name, type);
+        result.register_implementation(name, std::make_unique<mechanism>(type, *icpu));
+    }
+    return result;
+}
+
+*/
 
 namespace py = pybind11;
 using namespace pybind11::literals;
@@ -20,8 +82,8 @@ bool frozen = false;
 
 void frozen_check(bool check = false) {
     if (frozen != check) {
-        if (check) throw std::runtime_error("can not modify after catalogue load");
-        else throw std::runtime_error("can not call function before load");
+        if (check) ERROR("can not modify after catalogue load");
+        else ERROR("can not call function before load");
     }
 }
 
@@ -49,7 +111,7 @@ public:
     bool ro = false;
     ArbPPArray(size_t size, T * raw, bool ro=false) : size(size), raw(raw), ro(ro) {}
     py::array_t<T> to_numpy() {
-        if (!raw) throw std::runtime_error("trying to make a nullpointer into a numpy array");
+        if (!raw) ERROR("trying to make a nullpointer into a numpy array");
         return py::array_t<T>(size, raw, py::none());
     }
 };
@@ -111,6 +173,9 @@ public:
     std::function<void(const PP pp)> advance_state_handler;
     std::function<void(const PP pp)> compute_currents_handler;
     std::function<void(const PP pp)> write_ions_handler;
+    ArbMech() {
+        add_global("_arbor_pycat_mech_idx", "1", 123456789.); // to be updated on register
+    }
     int add_global(const std::string & name, const std::string & unit = "", double default_value=0.) {
         frozen_check();
         arb_field_info afi = { intern(name), intern(unit), default_value, -std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
@@ -162,21 +227,21 @@ public:
 };
 
 py::array_t<arb_value_type> PP::state(size_t idx) {
-    if (!pp->state_vars) throw std::runtime_error("empty state_vars");
-    if (idx >= mech->state_vars.size()) throw std::runtime_error("state out of range");
+    if (!pp->state_vars) ERROR("empty state_vars");
+    if (idx >= mech->state_vars.size()) ERROR("state out of range");
     return ArbPPArray<arb_value_type>(get_width(), pp->state_vars[idx]).to_numpy(); }
 py::array_t<arb_value_type> PP::param(size_t idx) {
-    if (!pp->parameters) throw std::runtime_error("empty parameters");
-    if (idx >= mech->parameters.size()) throw std::runtime_error("param out of range");
+    if (!pp->parameters) ERROR("empty parameters");
+    if (idx >= mech->parameters.size()) ERROR("param out of range");
     return ArbPPArray<arb_value_type>(get_width(), pp->parameters[idx]).to_numpy(); }
 py::array_t<arb_value_type> PP::random(size_t idx) {
-    if (!pp->random_numbers) throw std::runtime_error("empty random");
-    if (idx >= mech->random_variables.size()) throw std::runtime_error("param out of range");
+    if (!pp->random_numbers) ERROR("empty random");
+    if (idx >= mech->random_variables.size()) ERROR("param out of range");
     // ugly: we discard the const
     return ArbPPArray<arb_value_type>(get_width(), (arb_value_type*)pp->random_numbers[idx], true).to_numpy(); }
 ArbIonState PP::ions(size_t idx) {
-    if (!pp->ion_states) throw std::runtime_error("empty ion_states");
-    if (idx >= mech->ions.size()) throw std::runtime_error("param out of range");
+    if (!pp->ion_states) ERROR("empty ion_states");
+    if (idx >= mech->ions.size()) ERROR("param out of range");
     return ArbIonState(get_width(), &pp->ion_states[idx]); }
 
 std::vector<std::shared_ptr<ArbMech>> mechs;
@@ -184,19 +249,23 @@ std::vector<std::shared_ptr<ArbMech>> mechs;
 static void init(arb_mechanism_ppack* pp) {
     // i have absolutely NO idea why, but mechanism_id's are assigned
     // in reverse order??
-    int idx = mechs.size() - pp->mechanism_id - 1;
+    // Ah so we can not actuall use this it's 
+    //   "Unique ID for this mechanism on this cell group"
+    // So we need to store in a global I assme
+    // int idx = mechs.size() - pp->mechanism_id - 1;
+    int idx = (int)pp->globals[0];
     mechs.at(idx)->init_handler(PP(pp, mechs.at(idx)));
 }
 static void advance_state(arb_mechanism_ppack* pp) {
-    int idx = mechs.size() - pp->mechanism_id - 1;
+    int idx = (int)pp->globals[0];
     mechs.at(idx)->advance_state_handler(PP(pp, mechs.at(idx)));
 }
 static void compute_currents(arb_mechanism_ppack* pp) {
-    int idx = mechs.size() - pp->mechanism_id - 1;
+    int idx = (int)pp->globals[0];
     mechs.at(idx)->compute_currents_handler(PP(pp, mechs.at(idx)));
 }
 static void write_ions(arb_mechanism_ppack* pp) {
-    int idx = mechs.size() - pp->mechanism_id - 1;
+    int idx = (int)pp->globals[0];
     mechs.at(idx)->write_ions_handler(PP(pp, mechs.at(idx)));
 }
 static void apply_events(arb_mechanism_ppack* pp, arb_deliverable_event_stream* stream_ptr) {
@@ -225,11 +294,12 @@ arb_mechanism_interface * make_cpu_iface() {
 }
 
 arb_mechanism_type make_input_type() {
+    // we writing against load_catalogue in arbor/mechcat.cpp, see top of file
     frozen_check(true);
     static size_t call_counter = 0;
     // this is ugly, but we know this function is called in a loop
     // so in that way we find out which mechanism we are generating for
-    if (call_counter >= mechs.size()) throw std::runtime_error("called > size(mechs) times; arbor internals changed?");
+    if (call_counter >= mechs.size()) ERROR("called > size(mechs) times; called load_catalogue twice?");
     auto & mech = mechs.at(call_counter);
     call_counter += 1;
     arb_mechanism_type result;
@@ -285,6 +355,10 @@ PYBIND11_MODULE(_core, m) {
 
     m.def("register", [](std::shared_ptr<ArbMech> & mech) {
         frozen_check();
+        if (mech->globals.at(0).default_value != 123456789.) {
+            ERROR("something went wrong with the global idx");
+        }
+        mech->globals.at(0).default_value = (arb_value_type)mechs.size();
         mechs.push_back(mech);
     });
     py::class_<ArbMech, std::shared_ptr<ArbMech>>(m, "ArbMech")

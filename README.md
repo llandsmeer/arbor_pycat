@@ -124,11 +124,32 @@ class ExampleMech(arbor_pycat.CustomMechanism):
 
 ## Debugging segfaults
 
+Build a debug arbor (in arbor source directory)
+
+```
+$ git checkout 0.9.0
+$ cmake .. \
+    -G Ninja \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DARB_VECTORIZE=off \
+    -DARB_WITH_PYTHON=on \
+    -DCMAKE_BUILD_TYPE=debug \
+    -DARB_WITH_ASSERTIONS=on \
+    -DARB_WITH_PROFILING=off \
+    -DARB_USE_BUNDLED_LIBS=on \
+    -DARB_PYTHON_LIB_PATH="`python3 -c 'import site; print(site.getusersitepackages())'`" \
+    -DCMAKE_INSTALL_PREFIX=$HOME/.local
+$ ninja install
+```
+
+Build a debug arbor pycat (in arbor_pycat directory)
+
 ```
 pip install .
 mkdir build
 cd build
 cmake -DPython_EXECUTABLE:FILEPATH=$(which python3) -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-I ~/.local/lib/python3.10/site-packages/arbor/include" ..
+make
 mv _core.cpython-310-x86_64-linux-gnu.so ~/.local/lib/python3.10/site-packages/arbor_pycat/_core.cpython-310-x86_64-linux-gnu.so
 
 # [ ... ]
