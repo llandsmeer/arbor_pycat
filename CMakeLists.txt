@@ -21,7 +21,7 @@ python_add_library(_core MODULE
     WITH_SOABI)
 
 include_directories(${arbor_INCLUDE_DIR})
-target_compile_options(_core PRIVATE -g -Wall -Wextra -Wpedantic -Werror)
+target_compile_options(_core PRIVATE -O3 -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(_core PRIVATE pybind11::headers)
 target_compile_definitions(_core PRIVATE VERSION_INFO=${PROJECT_VERSION})
 install(TARGETS _core DESTINATION arbor_pycat)

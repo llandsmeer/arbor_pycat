@@ -11,9 +11,10 @@
 #include <unistd.h>
 #include <dlfcn.h>
 
+#define IGNORE(x) ((void)(1+x))
 #define ERROR(x) do { \
     char buf[] = "arbor_pycat:" __FILE__ ":" x; \
-    write(STDOUT_FILENO, buf, sizeof(buf)); \
+    IGNORE(write(STDOUT_FILENO, buf, sizeof(buf))); \
     throw std::runtime_error(x); \
 } while (0)
 
@@ -116,6 +117,15 @@ public:
     }
 };
 
+template<typename T>
+py::array_t<T> stack(std::vector<py::array_t<T>> & arrays) {
+    py::array_t<T, py::array::f_style> res({(int)arrays.size(), (int)arrays.at(0).size()});
+    for (size_t i = 0; i < arrays.size(); i++) {
+        res[py::make_tuple(i, py::ellipsis())] = arrays.at(i);
+    }
+    return res;
+}
+
 class ArbMech;
 
 class PP {
@@ -145,6 +155,10 @@ public:
     py::array_t<arb_value_type> diam_um(){ return ArbPPArray<arb_value_type>(max_node_index+1, pp->diam_um).to_numpy(); }
     py::array_t<arb_value_type> area_um2(){ return ArbPPArray<arb_value_type>(max_node_index+1, pp->area_um2).to_numpy(); }
     py::array_t<arb_value_type> state(size_t idx);
+    void set_state(py::array_t<arb_value_type> &);
+    py::array_t<arb_value_type> get_state();
+    py::array_t<arb_value_type> get_diff_ions();
+    void set_diff_ions(py::array_t<arb_value_type> & val);
     py::array_t<arb_value_type> param(size_t idx);
     py::array_t<arb_value_type> random(size_t idx);
     ArbIonState ions(size_t idx);
@@ -243,6 +257,45 @@ ArbIonState PP::ions(size_t idx) {
     if (!pp->ion_states) ERROR("empty ion_states");
     if (idx >= mech->ions.size()) ERROR("param out of range");
     return ArbIonState(get_width(), &pp->ion_states[idx]); }
+
+void PP::set_state(py::array_t<arb_value_type> & states) {
+    if (!pp->state_vars) ERROR("empty state_vars");
+    py::buffer_info info = states.request();
+    if (info.ndim != 2) ERROR("set_state input must be 2d");
+    for (int i = 0; i < info.shape[0]; i++) {
+        state(i)[py::ellipsis()] = states[py::make_tuple(i, py::ellipsis())];
+    }
+}
+py::array_t<arb_value_type> PP::get_state() {
+    if (!pp->state_vars) ERROR("empty state_vars");
+    std::vector<py::array_t<arb_value_type>> states;
+    for (size_t i = 0; i < mech->state_vars.size(); i++) {
+        states.push_back(state(i));
+    }
+    return stack<arb_value_type>(states);
+}
+py::array_t<arb_value_type> PP::get_diff_ions() {
+    if (!pp->state_vars) ERROR("empty state_vars");
+    py::array_t<arb_value_type, py::array::f_style> res({(int)mech->ions.size(), (int)get_width()});
+    for (size_t i = 0; i < mech->ions.size(); i++) {
+        auto s = ions(i);
+        auto d =  ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->diffusive_concentration).to_numpy();
+        auto idx = ArbPPArray<arb_index_type>(s.size_of_index_array, s.raw->index).to_numpy();
+        res[py::make_tuple(i, py::ellipsis())] = d[idx];
+    }
+    return res;
+}
+void PP::set_diff_ions(py::array_t<arb_value_type> & val) {
+    if (!pp->state_vars) ERROR("empty state_vars");
+    py::buffer_info info = val.request();
+    if (info.ndim != 2) ERROR("set_diff_ions input must be 2d");
+    for (size_t i = 0; i < mech->ions.size(); i++) {
+        auto s = ions(i);
+        auto d =  ArbPPArray<arb_value_type>(s.size_of_data_arrays, s.raw->diffusive_concentration).to_numpy();
+        auto idx = ArbPPArray<arb_index_type>(s.size_of_index_array, s.raw->index).to_numpy();
+        d[idx] = val[py::make_tuple(i, py::ellipsis())];
+    }
+}
 
 std::vector<std::shared_ptr<ArbMech>> mechs;
 
@@ -448,6 +501,10 @@ PYBIND11_MODULE(_core, m) {
         .def_property_readonly("dt", &PP::get_dt)
         .def_property_readonly("node_index", &PP::node_index)
         .def("state", &PP::state)
+        .def("get_state", &PP::get_state)
+        .def("set_state", &PP::set_state)
+        .def("get_diff_ions", &PP::get_diff_ions)
+        .def("set_diff_ions", &PP::set_diff_ions)
         .def("glob", &PP::glob)
         .def("param", &PP::param)
         .def("random", &PP::random)
