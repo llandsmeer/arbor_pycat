@@ -2,6 +2,12 @@ import arbor
 import numpy as np
 import arbor_pycat._core as acm
 
+try:
+    from arbor import units as U
+    mV = U.mV
+except ImportError:
+    mV = 1
+
 mech = acm.ArbMech()
 acm.register(mech)
 E = mech.add_global("e", "mV", -70)
@@ -44,7 +50,7 @@ labels = arbor.label_dict({"soma": "(tag 1)", "midpoint": "(location 0 0.5)"})
 # (3) Create cell and set properties
 decor = (
     arbor.decor()
-    .set_property(Vm=-40)
+    .set_property(Vm=-40*mV)
     .paint('"soma"', arbor.density("mech"))
     .set_ion("Na", int_con=54.4, ext_con=2.5, rev_pot=-77)
 )

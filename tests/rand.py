@@ -1,6 +1,12 @@
 import arbor
 import arbor_pycat
 
+try:
+    from arbor import units as U
+    mV = U.mV
+except ImportError:
+    mV = 1
+
 @arbor_pycat.register
 class RandTest(arbor_pycat.CustomMechanism):
     random = [('rand', 0)]
@@ -24,7 +30,7 @@ labels = arbor.label_dict({"soma": "(tag 1)", "midpoint": "(location 0 0.5)"})
 # (3) Create cell and set properties
 decor = (
     arbor.decor()
-    .set_property(Vm=-40)
+    .set_property(Vm=-40*mV)
     .paint('"soma"', arbor.density("rt"))
 )
 

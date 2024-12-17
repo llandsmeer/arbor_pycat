@@ -1,6 +1,15 @@
 import arbor
 import arbor_pycat
 
+
+try:
+    from arbor import units as U
+    mV = U.mV
+    Ohm_cm = U.Ohm * U.cm
+except ImportError:
+    mV = 1
+    Ohm_cm = 1
+
 @arbor_pycat.register
 class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
@@ -49,7 +58,7 @@ labels = arbor.label_dict({"soma": "(tag 1)", "dend": "(tag 2)", "midpoint": "(l
 # (3) Create cell and set properties
 decor = (
     arbor.decor()
-    .set_property(Vm=-40, rL=1e5)
+    .set_property(Vm=-40*mV, rL=1e5*Ohm_cm)
     .paint('"soma"', arbor.density("example"))
     .paint('"dend"', arbor.density("passive"))
 )

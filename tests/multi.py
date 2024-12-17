@@ -2,6 +2,12 @@ import numpy as np
 import arbor
 import arbor_pycat
 
+try:
+    from arbor import units as U
+    mV = U.mV
+except ImportError:
+    mV = 1
+
 @arbor_pycat.register
 class Passive(arbor_pycat.CustomMechanism):
     name = 'passive'
@@ -34,11 +40,6 @@ class single_recipe(arbor.recipe):
     def num_cells(self): return 4
     def cell_kind(self, _): return arbor.cell_kind.cable
     def cell_description(self, gid):
-        try:
-            from arbor import units as U
-            mV = U.mV
-        except ImportError:
-            mV = 1
         decor = arbor.decor().set_property(Vm=2*mV).paint('"dend"', arbor.density('passive', dict(gid=1e-10 + gid)))
         return arbor.cable_cell(tree, decor, labels)
     def probes(self, _): return [arbor.cable_probe_membrane_voltage('(root)')]
