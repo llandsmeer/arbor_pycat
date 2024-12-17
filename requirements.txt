@@ -1,2 +1,2 @@
 numpy
-arbor
+arbor==0.9
