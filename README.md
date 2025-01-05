@@ -1,4 +1,4 @@
-# (Experimental) custom mechanisms in python for Arbor
+# Custom mechanisms in python for Arbor
 
 ![CI](https://github.com/llandsmeer/arbor_pycat/actions/workflows/python-package.yml/badge.svg)
 
